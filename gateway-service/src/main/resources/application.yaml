@@ -1,0 +1,25 @@
+spring:
+  cloud:
+    gateway:
+      mvc:
+        routes:
+          - id: itinerary-service-route
+            uri: lb://webapp-service # Load balanced URI to Kubernetes service
+            predicates:
+              - path=/itineraryservice/**
+    kubernetes:
+      discovery:
+        enabled: true
+        all-namespaces: true 
+
+server:
+  port: 9090
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,96 @@
+version: 2.1
+
+orbs:
+  gcp-cli: circleci/gcp-cli@2.4.1
+
+executors:
+  integration-test-executor:
+    machine:
+      image: ubuntu-2204:2024.04.4
+      docker_layer_caching: true
+
+jobs:
+  build-and-push:
+    docker:
+      - image: cimg/openjdk:21.0.2
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 20.10.14
+      - run:
+          name: Bulding the Jar file with tests
+          command: |
+            ./gradlew clean build
+      - run:
+          name: Authenticate with DockerHub
+          command: |
+            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+      - run:
+          name: Build Multi-Arch Docker Images and push them on DockerHub
+          command: |
+            docker build -t $DOCKER_USERNAME/shareitinerary:amd64 --platform linux/amd64 .
+            docker build -t $DOCKER_USERNAME/shareitinerary:arm64 --platform linux/arm64 .
+            docker push $DOCKER_USERNAME/shareitinerary:amd64
+            docker push $DOCKER_USERNAME/shareitinerary:arm64
+
+      - run:
+          name: Make docker manifest and push it on DockerHub
+          command: |
+            docker manifest create $DOCKER_USERNAME/shareitinerary:latest $DOCKER_USERNAME/shareitinerary:amd64 $DOCKER_USERNAME/shareitinerary:arm64
+            docker manifest push $DOCKER_USERNAME/shareitinerary:latest
+
+  test:
+    executor: integration-test-executor
+    steps:
+      - checkout
+      - run:
+          name: Running Integration tests
+          command: |
+            ./gradlew integrationTest
+
+  deploy-to-gke:
+    docker:
+      - image: cimg/gcp:2024.03.1
+    steps:
+      - checkout
+      - run:
+          name: authorizing with GCP
+          command: |
+            gcloud auth activate-service-account --key-file=<(echo "$GCP_KEY")
+      - run:
+          name: installing required utilities for the gcloud
+          command: |
+            sudo apt-get install kubectl
+      - run:
+          name: getting connected to cluster
+          command: |
+            gcloud container clusters get-credentials $CLUSTER_NAME --region $REGION_NAME --project $PROJECT_ID
+      - run:
+          name: applying every k8s file to the deployment server
+          command: |
+            kubectl apply -f k8s/
+      - run:
+          name: spinning up the ingress
+          command: |
+            kubectl apply -f gcp/gcp-ingress.yml
+
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - build-and-push:
+          context: dockerhub-creds
+      - test:
+          requires:
+            - build-and-push
+      - hold:
+          type: approval
+          requires:
+            - test
+      - deploy-to-gke:
+          requires:
+            - hold
+          context: gcp-creds
+          filters:
+            branches:
+              only: main

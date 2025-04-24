@@ -1,0 +1,9 @@
+[submodule "itinerary-service"]
+	path = itinerary-service
+	url = https://github.com/DhairyaPatel2210/itinerary-service.git
+[submodule "share-itinerary-frontend"]
+	path = share-itinerary-frontend
+	url = https://github.com/DhairyaPatel2210/share-itinerary-frontend.git
+[submodule "gateway-service"]
+	path = gateway-service
+	url = https://github.com/DhairyaPatel2210/gateway-service.git
